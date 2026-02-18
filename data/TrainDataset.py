@@ -2,6 +2,7 @@ import pandas as pd
 from data.BaseDataset import BaseDataset, get_transform
 import os
 from PIL import Image
+import torch
 
 def make_dataset(img_id, data_root_folder):
     img_folder_path = os.path.join(data_root_folder, img_id)
@@ -106,8 +107,9 @@ class Option:
     pass
 
 class CombinedDataset(BaseDataset):
-    def __init__(self, df):
+    def __init__(self, df, device: str):
         BaseDataset.__init__(self, None)
+        self.device = device
         self.dataset = df
         opt = Option()
         opt.preprocess = 'crop'
@@ -133,17 +135,23 @@ class CombinedDataset(BaseDataset):
     def __len__(self):
         return len(self.dataset)
 
+    # convert data to current using device before feeding into model
+    def pre_device(self, data):
+        for k, v in data.items():
+            if isinstance(v, torch.Tensor):
+                data[k] = v.to(self.device)
+        return data
     def __getitem__(self, idx):
         row = self.dataset.iloc[idx]
         dermoscopic_img = Image.open(row['dermoscopic']).convert('RGB')
         row_meta = row.drop(['isic_id', 'lesion_id', 'close-up', 'dermoscopic', 'image_manipulation', 'copyright_license', 'attribution', 'image_type', 'invasion_thickness_interval'])
         row_meta = self.encode_row_metadata(row_meta)
         
-        return {
+        return self.pre_device({
             "dermoscopic": self.transform(dermoscopic_img),
             # "metadata": row_meta,
             "label": lbl_to_idx[row['target']]
-        }
+        })
 
 def combine_pandas_datasets(dfs):
     combined_df = pd.merge(dfs[0], dfs[1], on='isic_id', how='inner')
