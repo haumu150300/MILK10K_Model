@@ -14,7 +14,7 @@ def train_one_epoch(model: nn.Module, dataloader: DataLoader, criterion, optimiz
     model.train()
     running_loss = 0.0
     for batch in dataloader:
-        inputs, labels = batch['dermoscopic'], batch['label']
+        inputs, labels = batch['dermoscopic'].to(device), batch['label'].to(device)
         optimizer.zero_grad()
         outputs = model(inputs)
         loss = criterion(outputs, labels)
@@ -32,7 +32,7 @@ def val_data(model: nn.Module, dataloader: DataLoader, criterion, device):
     total = 0
     with torch.no_grad():
         for batch in dataloader:
-            inputs, labels = batch['dermoscopic'], batch['label']
+            inputs, labels = batch['dermoscopic'].to(device), batch['label'].to(device)
             outputs = model(inputs)
             loss = criterion(outputs, labels)
 
@@ -67,25 +67,25 @@ train_df, val_df = split_dataframe(all_df, train_frac=0.8)
 #limit to 500 rows for testing
 train_df = train_df.head(500)
 print(train_df.head())
-# train_dataset = CombinedDataset(train_df, device)
+train_dataset = CombinedDataset(train_df)
 
-# epochs = 10
-# batch_size = 32
-# train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+epochs = 10
+batch_size = 32
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-# model = MyCNN(image_size=256)
-# criterion = nn.CrossEntropyLoss()
-# optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-# model.to(device)
+model = MyCNN(image_size=256)
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+model.to(device)
 
-# val_dataset = CombinedDataset(val_df, device)
-# val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-# best_val_loss = 999
-# model_saved_path = '/content/drive/MyDrive/Collab_storage/skin_leision/custom_model/'
-# for epoch in range(epochs):
-#         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
-#         val_loss, val_accuracy = val_data(model, val_loader, criterion, device)
-#         print(f'Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}')
-#         if(epoch > 100 and val_loss < best_val_loss):
-#             best_val_loss = val_loss
-#             # torch.save(model.state_dict(),  f'{model_saved_path}best_model_val_loss_{best_val_loss:.4f}.pth')
+val_dataset = CombinedDataset(val_df)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+best_val_loss = 999
+model_saved_path = '/content/drive/MyDrive/Collab_storage/skin_leision/custom_model/'
+for epoch in range(epochs):
+        train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        val_loss, val_accuracy = val_data(model, val_loader, criterion, device)
+        print(f'Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}')
+        if(epoch > 100 and val_loss < best_val_loss):
+            best_val_loss = val_loss
+            # torch.save(model.state_dict(),  f'{model_saved_path}best_model_val_loss_{best_val_loss:.4f}.pth')

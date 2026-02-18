@@ -107,9 +107,8 @@ class Option:
     pass
 
 class CombinedDataset(BaseDataset):
-    def __init__(self, df, device: str):
+    def __init__(self, df):
         BaseDataset.__init__(self, None)
-        self.device = device
         self.dataset = df
         opt = Option()
         opt.preprocess = 'crop'
@@ -129,29 +128,21 @@ class CombinedDataset(BaseDataset):
         # For example, you can use one-hot encoding for categorical variables
         encoded_metadata = pd.get_dummies(metadata)
         return encoded_metadata
-        
-        
 
     def __len__(self):
         return len(self.dataset)
-
-    # convert data to current using device before feeding into model
-    def pre_device(self, data):
-        for k, v in data.items():
-            if isinstance(v, torch.Tensor) or isinstance(v, list):
-                data[k] = v.to(self.device)
-        return data
+  
     def __getitem__(self, idx):
         row = self.dataset.iloc[idx]
         dermoscopic_img = Image.open(row['dermoscopic']).convert('RGB')
         row_meta = row.drop(['isic_id', 'lesion_id', 'close-up', 'dermoscopic', 'image_manipulation', 'copyright_license', 'attribution', 'image_type', 'invasion_thickness_interval'])
         row_meta = self.encode_row_metadata(row_meta)
         
-        return self.pre_device({
+        return {
             "dermoscopic": self.transform(dermoscopic_img),
             # "metadata": row_meta,
             "label": lbl_to_idx[row['target']]
-        })
+        }
 
 def combine_pandas_datasets(dfs):
     combined_df = pd.merge(dfs[0], dfs[1], on='isic_id', how='inner')
