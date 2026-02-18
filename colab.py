@@ -82,7 +82,7 @@ print(train_df.head())
 train_dataset = CombinedDataset(train_df)
 
 epochs = 1000
-batch_size = 32
+batch_size = 64
 train_loader = DataLoader(
     train_dataset,
     batch_size=batch_size,
@@ -93,7 +93,7 @@ train_loader = DataLoader(
 
 model = MyCNN(image_size=256)
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 model.to(device)
 
 # val_df = val_df.head(50)
