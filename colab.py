@@ -22,7 +22,7 @@ def train_one_epoch(
         inputs, labels = batch["dermoscopic"].to(device), batch["label"].to(device)
         optimizer.zero_grad()
         scaler = torch.amp.GradScaler(device)
-        with torch.cuda.amp.autocast(device_type=device, enabled=True):
+        with torch.cuda.amp.autocast(device, enabled=True):
             outputs = model(inputs)
             loss = criterion(outputs, labels)
         scaler.scale(loss).backward()
@@ -96,6 +96,7 @@ criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 model.to(device)
 
+val_df = val_df.head(50)
 val_dataset = CombinedDataset(val_df)
 val_loader = DataLoader(
     val_dataset,
