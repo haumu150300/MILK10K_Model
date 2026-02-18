@@ -77,11 +77,11 @@ def split_dataframe(df, train_frac=0.8, label_col="label"):
 
 train_df, val_df = split_dataframe(all_df, train_frac=0.8)
 # limit to 500 rows for testing
-train_df = train_df.head(50)
+# train_df = train_df.head(50)
 print(train_df.head())
 train_dataset = CombinedDataset(train_df)
 
-epochs = 10
+epochs = 1000
 batch_size = 32
 train_loader = DataLoader(
     train_dataset,
@@ -96,7 +96,7 @@ criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 model.to(device)
 
-val_df = val_df.head(50)
+# val_df = val_df.head(50)
 val_dataset = CombinedDataset(val_df)
 val_loader = DataLoader(
     val_dataset,
@@ -114,11 +114,11 @@ for epoch in range(epochs):
     print(
         f"Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}"
     )
-    # if(epoch > 9 and val_loss < best_val_loss):
-    #     best_val_loss = val_loss
-    #     torch.save({
-    #     'epoch': epoch,
-    #     'model_state_dict': model.state_dict(),
-    #     'optimizer_state_dict': optimizer.state_dict(),
-    #     'loss': val_loss,
-    # }, f'{model_saved_path}best_model_val_loss_{best_val_loss:.4f}.pth')
+    if(epoch > 50 and val_loss < best_val_loss):
+        best_val_loss = val_loss
+        torch.save({
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': val_loss,
+    }, f'{model_saved_path}best_model_val_loss_{best_val_loss:.4f}.pth')
