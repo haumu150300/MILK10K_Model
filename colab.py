@@ -22,7 +22,7 @@ def train_one_epoch(
         inputs, labels = batch["dermoscopic"].to(device), batch["label"].to(device)
         optimizer.zero_grad()
         scaler = torch.amp.GradScaler(device)
-        with torch.cuda.amp.autocast(device):
+        with torch.cuda.amp.autocast(device_type=device, enabled=True):
             outputs = model(inputs)
             loss = criterion(outputs, labels)
         scaler.scale(loss).backward()
