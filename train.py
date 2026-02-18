@@ -88,4 +88,9 @@ for epoch in range(epochs):
         print(f'Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}')
         if(epoch > 100 and val_loss < best_val_loss):
             best_val_loss = val_loss
-            torch.save(model.state_dict(),  f'{model_saved_path}best_model_val_loss_{best_val_loss:.4f}.pth')
+            torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'loss': val_loss,
+        }, f'{model_saved_path}best_model_val_loss_{best_val_loss:.4f}.pth')

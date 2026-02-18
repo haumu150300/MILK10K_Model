@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from src.model.MyModel import MyCNN
 import random
+from sklearn.model_selection import train_test_split
 
 
 random.seed(42)
@@ -57,15 +58,18 @@ for idx, row in all_df.iterrows():
     all_df.at[idx, 'close-up'] = img_paths['close-up']
     all_df.at[idx, 'dermoscopic'] = img_paths['dermoscopic']
 
-def split_dataframe(df, train_frac=0.8):
-    train_size = int(len(df) * train_frac)
-    train_df = df.sample(n=train_size, random_state=42)
-    val_df = df.drop(train_df.index)
+def split_dataframe(df, train_frac=0.8, label_col="label"):
+    train_df, val_df = train_test_split(
+        df,
+        train_size=train_frac,
+        stratify=df[label_col],   # 🔥 important
+        random_state=42
+    )
     return train_df, val_df
 
 train_df, val_df = split_dataframe(all_df, train_frac=0.8)
 #limit to 500 rows for testing
-train_df = train_df.head(500)
+train_df = train_df.head(50)
 print(train_df.head())
 train_dataset = CombinedDataset(train_df)
 
@@ -86,6 +90,11 @@ for epoch in range(epochs):
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
         val_loss, val_accuracy = val_data(model, val_loader, criterion, device)
         print(f'Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}')
-        if(epoch > 100 and val_loss < best_val_loss):
-            best_val_loss = val_loss
-            # torch.save(model.state_dict(),  f'{model_saved_path}best_model_val_loss_{best_val_loss:.4f}.pth')
+        # if(epoch > 9 and val_loss < best_val_loss):
+        #     best_val_loss = val_loss
+        #     torch.save({
+        #     'epoch': epoch,
+        #     'model_state_dict': model.state_dict(),
+        #     'optimizer_state_dict': optimizer.state_dict(),
+        #     'loss': val_loss,
+        # }, f'{model_saved_path}best_model_val_loss_{best_val_loss:.4f}.pth')
