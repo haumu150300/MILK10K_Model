@@ -62,7 +62,6 @@ def split_dataframe(df, train_frac=0.8, label_col="label"):
     train_df, val_df = train_test_split(
         df,
         train_size=train_frac,
-        stratify=df[label_col],   # 🔥 important
         random_state=42
     )
     return train_df, val_df
@@ -86,6 +85,7 @@ val_dataset = CombinedDataset(val_df)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 best_val_loss = 999
 model_saved_path = '/content/drive/MyDrive/Collab_storage/skin_leision/custom_model/'
+print('start training...')
 for epoch in range(epochs):
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
         val_loss, val_accuracy = val_data(model, val_loader, criterion, device)
