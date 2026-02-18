@@ -138,7 +138,7 @@ class CombinedDataset(BaseDataset):
     # convert data to current using device before feeding into model
     def pre_device(self, data):
         for k, v in data.items():
-            if isinstance(v, torch.Tensor):
+            if isinstance(v, torch.Tensor) or isinstance(v, list):
                 data[k] = v.to(self.device)
         return data
     def __getitem__(self, idx):
