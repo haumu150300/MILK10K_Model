@@ -54,7 +54,7 @@ def val_data(model: nn.Module, dataloader: DataLoader, criterion, device):
     return epoch_loss, accuracy
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print("device: ", device)
 img_root_folder = (
     "/content/drive/MyDrive/Collab_storage/skin_leision/train/MILK10k_Training_Input"
