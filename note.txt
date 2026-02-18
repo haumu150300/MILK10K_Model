@@ -1,0 +1,4 @@
+https://workshop.isic-archive.com/2018/
+리더보드: https://challenge.isic-archive.com/leaderboards/milk10k
+데스트:  https://challenge.isic-archive.com/task/57/
+dataset milk10k
