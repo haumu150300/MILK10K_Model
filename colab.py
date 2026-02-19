@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from src.model.MyModel import MyCNN
 import random
 from sklearn.model_selection import train_test_split
-
+from config import Config
 
 random.seed(42)
 torch.manual_seed(42)
@@ -56,9 +56,12 @@ def val_data(model: nn.Module, dataloader: DataLoader, criterion, device):
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print("device: ", device)
-img_root_folder = (
-    "/content/drive/MyDrive/Collab_storage/skin_leision/train/MILK10k_Training_Input"
-)
+
+
+config = Config()
+img_root_folder = config.img_root_folder
+model_saved_path = config.model_saved_path
+
 train_metadata = pd.read_csv("./MILK10k_Training_Metadata.csv")
 train_supplement = pd.read_csv("./MILK10k_Training_Supplement.csv")
 
@@ -106,7 +109,6 @@ val_loader = DataLoader(
     pin_memory=True,
 )
 best_val_loss = 999
-model_saved_path = "/content/drive/MyDrive/Collab_storage/skin_leision/custom_model/"
 print("start training...")
 for epoch in range(epochs):
     train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)

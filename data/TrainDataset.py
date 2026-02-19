@@ -103,6 +103,7 @@ isic_dx_to_abbr = {
 LABELS = list(set(isic_dx_to_abbr.values()))
 print(' LABELS: ', LABELS)
 lbl_to_idx = {v: i for i, v in enumerate(LABELS)}
+idx_to_lbl = {i: v for i, v in enumerate(LABELS)}
 class Option:
     pass
 
