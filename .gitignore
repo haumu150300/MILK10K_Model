@@ -2,4 +2,5 @@
 /MILK10k_Test_Input
 /chkpt
 
+*.pth
 *.zip

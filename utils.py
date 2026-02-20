@@ -2,7 +2,8 @@ import os
 import torch
 
 def continue_train(model, optimizer, config, device):
-    models = os.listdir(config.model_saved_path)
+    models = sorted(os.listdir(config.model_saved_path))
+    models = [m for m in models if m.endswith(".pth")]
     if len(models) == 0:
         return 0, 0
     model_path = os.path.join(config.model_saved_path, models[0])
