@@ -1,71 +1,44 @@
-import pandas as pd
-from data.TrainDataset import CombinedDataset, idx_to_lbl, make_dataset
 from config import Config
-from src.model.MyModel import MyCNN
+import os
+import pandas as pd
 import torch
-from utils import continue_train
+from src.model.MyModel import MyCNN
+import torchvision.transforms as transforms
+from PIL import Image
+import tqdm 
+test_dir = 'MILK10k_Test_Input/MILK10k_Test_Input'
+dirs = [i for i in os.listdir(test_dir) if i.startswith('IL')]
 
-
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print("device: ", device)
-
-exit()
-config = Config()
-config.img_root_folder = './MILK10k_Test_Input/MILK10k_Test_Input'
-model = MyCNN(image_size=256)
-
-continue_train(model, None, config, device)
-
-test_df = pd.read_csv("MILK10k_Test_Metadata.csv")
 submit_df = pd.read_csv("MILK10k_Sample_Submit.csv")
-
-for idx, row in test_df.iterrows():
-    img_id = row.lesion_id
-    img_paths = make_dataset(img_id, config.img_root_folder)
-    test_df.at[idx, "close-up"] = img_paths["close-up"]
-    test_df.at[idx, "dermoscopic"] = img_paths["dermoscopic"]
-test_dataset = CombinedDataset(test_df)
-
-for idx in range(len(test_dataset)):
-	data = test_dataset[idx]
-	dermoscopic = data["dermoscopic"].unsqueeze(0)  # add batch dimension
-	logits = model(dermoscopic)
-	probs = torch.sigmoid(logits).squeeze().tolist()  # convert to list of probabilities
-	for prob_idx in range(len(probs)):
-		submit_df.at[idx, idx_to_lbl[prob_idx]] = 1.0 if probs[prob_idx] >= 0.5 else 0.0
-  
-submit_df.to_csv("MILK10k_Submit.csv", index=False)
-# LABEL_COLUMNS = [
-# 	"AKIEC",
-# 	"BCC",
-# 	"BEN_OTH",
-# 	"BKL",
-# 	"DF",
-# 	"INF",
-# 	"MAL_OTH",
-# 	"MEL",
-# 	"NV",
-# 	"SCCKA",
-# 	"VASC",
-# ]
-
-# def build_submit_template(
-# 	test_metadata_path: str,
-# 	output_path: str,
-# ) -> None:
-# 	test_df = pd.read_csv(test_metadata_path, usecols=["lesion_id"])
-# 	lesion_ids = test_df["lesion_id"].drop_duplicates().sort_values()
-
-# 	submit_df = pd.DataFrame({"lesion_id": lesion_ids})
-# 	for col in LABEL_COLUMNS:
-# 		submit_df[col] = 0.0
-
-# 	submit_df.to_csv(output_path, index=False)
+submit_df.set_index("lesion_id", inplace=True)
+ 
+if __name__ == "__main__":
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") 
+    print('device: ', device.type)
+    
+    checkpoint = torch.load("chkpt/best_model_val_loss_1.4967_850.pth", map_location=device)
+    model = MyCNN(image_size=256)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model.to(device)
+    model.eval()
+    transform = transforms.Compose([
+        transforms.Resize((256, 256)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    for lesion in tqdm.tqdm(dirs):
+        logis = []
+        for img in os.listdir(os.path.join(test_dir, lesion)):
+            img_path = os.path.join(test_dir, lesion, img)
+            image = Image.open(img_path).convert("RGB")
+            input = transform(image)
+            with torch.no_grad():
+                output = model(input.unsqueeze(0).to(device))
+                logis.append(torch.sigmoid(output.squeeze()))
+        # Average logits for the lesion
+        avg_logis = torch.stack(logis).mean(dim=0)
+        submit_df.loc[lesion] = avg_logis.detach().cpu().tolist()
+print('Done!')
+submit_df.to_csv("submission.csv")
 
 
-# if __name__ == "__main__":
-# 	build_submit_template(
-# 		"MILK10k_Test_Metadata.csv",
-# 		"MILK10k_Submit.csv",
-# 	)

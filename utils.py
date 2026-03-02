@@ -5,7 +5,7 @@ def continue_train(model, optimizer, config, device):
     models = sorted(os.listdir(config.model_saved_path))
     models = [m for m in models if m.endswith(".pth")]
     if len(models) == 0:
-        return 0, 0
+        return 0, 999
     model_path = os.path.join(config.model_saved_path, models[0])
     checkpoint = torch.load(model_path, map_location=device)
 

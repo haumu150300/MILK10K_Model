@@ -93,13 +93,11 @@ isic_dx_to_abbr = {
     "Pyogenic granuloma": "VASC",
 }
 LABELS = list(set(isic_dx_to_abbr.values()))
-print(" LABELS: ", LABELS)
 lbl_to_idx = {v: i for i, v in enumerate(LABELS)}
 idx_to_lbl = {i: v for i, v in enumerate(LABELS)}
 
 
  
-
 class CombinedDataset(BaseDataset):
     def __init__(self,opt, df, gt_df, data_type: str = "train"):
         BaseDataset.__init__(self, opt)
@@ -150,7 +148,7 @@ class CombinedDataset(BaseDataset):
             return {
                 "image": self.transform(img),
                 # "metadata": row_meta,
-                "label": torch.tensor([i for i in self.gt_df.iloc[idx]][1:], dtype=torch.float32),
+                "label": torch.tensor([i for i in self.gt_df.loc[leision_id].values], dtype=torch.float32),
             }
         else:
             return {
