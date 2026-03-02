@@ -18,20 +18,19 @@ def train_one_epoch(
 ):
     model.train()
     running_loss = 0.0
-
-    for batch in dataloader:
+    for i, batch in enumerate(dataloader):
+        if i >= 100:
+            break
         inputs, labels = batch["image"].to(device), batch["label"].to(device)
         optimizer.zero_grad()
         scaler = torch.amp.GradScaler(device.type)
         with torch.amp.autocast(device.type):
             outputs = model(inputs)
-            predicted = (torch.sigmoid(outputs) > 0.5).float()
-            loss = criterion(predicted, labels)
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+            loss = criterion(outputs, labels)
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
         running_loss += loss.item() * inputs.size(0)
-
     epoch_loss = running_loss / len(dataloader.dataset)
     return epoch_loss
 
@@ -83,7 +82,7 @@ if __name__ == "__main__":
     train_dataset = CombinedDataset(config, train_df, train_gt_df)
 
     epochs = 1000
-    batch_size = 80
+    batch_size = 10
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
