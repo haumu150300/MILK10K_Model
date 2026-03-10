@@ -17,20 +17,23 @@ def train_one_epoch(
 ):
     model.train()
     running_loss = 0.0
-    for i, batch in enumerate(dataloader):
-        if i >= 100:
-            break
-        inputs, labels = batch["image"].to(device), batch["label"].to(device)
-        optimizer.zero_grad()
-        scaler = torch.amp.GradScaler(device.type)
-        with torch.amp.autocast(device.type):
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-        running_loss += loss.item() * inputs.size(0)
-    epoch_loss = running_loss / len(dataloader.dataset)
+     
+    with tqdm.tqdm(total=dataloader.__len__(), desc="Epoch Progress") as pbar:
+        for i, batch in enumerate(dataloader):
+            if i >= 100:
+                break
+            inputs, labels = batch["image"].to(device), batch["label"].to(device)
+            optimizer.zero_grad()
+            scaler = torch.amp.GradScaler(device.type)
+            with torch.amp.autocast(device.type):
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            running_loss += loss.item() * inputs.size(0)
+            pbar.update(1)
+        epoch_loss = running_loss / len(dataloader.dataset)
     return epoch_loss
 
 
@@ -62,6 +65,7 @@ if __name__ == "__main__":
     model_saved_path = config.model_saved_path
 
     train_metadata = pd.read_csv("./MILK10k_Training_Metadata.csv")
+    train_metadata = train_metadata[train_metadata["image_type"] == "dermoscopic"]
     # train_supplement = pd.read_csv("./MILK10k_Training_Supplement.csv")
     # all_df = pd.merge(train_metadata, train_supplement, on="isic_id", how="inner")
 
@@ -81,7 +85,7 @@ if __name__ == "__main__":
     train_dataset = CombinedDataset(config, train_df, train_gt_df)
 
     epochs = 500
-    batch_size = 10
+    batch_size = 64
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
