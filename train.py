@@ -20,8 +20,8 @@ def train_one_epoch(
      
     with tqdm.tqdm(total=dataloader.__len__(), desc="Epoch Progress") as pbar:
         for i, batch in enumerate(dataloader):
-            if i >= 100:
-                break
+            # if i >= 100:
+            #     break
             inputs, labels = batch["image"].to(device), batch["label"].to(device)
             optimizer.zero_grad()
             scaler = torch.amp.GradScaler(device.type)
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     train_dataset = CombinedDataset(config, train_df, train_gt_df)
 
     epochs = 500
-    batch_size = 64
+    batch_size = 6
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
