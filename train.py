@@ -8,7 +8,7 @@ import random
 from sklearn.model_selection import train_test_split
 from config import Config
 import tqdm
-from src.unet.Unet import UNet
+from src.efficientnet import Efficientnet
 from utils import continue_train
 random.seed(42)
 torch.manual_seed(42)
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     print(train_df.head())
     train_dataset = CombinedDataset(config, train_df, train_gt_df)
 
-    epochs = 1000
+    epochs = 500
     batch_size = 10
     train_loader = DataLoader(
         train_dataset,
@@ -91,7 +91,7 @@ if __name__ == "__main__":
         pin_memory=True,
     )
 
-    model = UNet(n_channels=3, n_classes=11, image_size=256)
+    model = Efficientnet(image_size=256, num_classes=11)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.00005)
     model.to(device)
@@ -102,7 +102,7 @@ if __name__ == "__main__":
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=True,
         num_workers=2,  # try 2 or 4 in Colab
         pin_memory=True,
     )
@@ -115,7 +115,7 @@ if __name__ == "__main__":
             print(
                 f"Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}"
             )
-            if epoch % 50 == 0:
+            if epoch > 1 and epoch % 50 == 0:
                 best_val_loss = val_loss
                 torch.save(
                     {
