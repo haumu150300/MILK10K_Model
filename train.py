@@ -3,12 +3,12 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from model import Efficientnet
 from src.model.MyModel import MyCNN
 import random
 from sklearn.model_selection import train_test_split
 from config import Config
 import tqdm
-from src.efficientnet import Efficientnet
 from utils import continue_train
 random.seed(42)
 torch.manual_seed(42)
