@@ -87,7 +87,7 @@ if __name__ == "__main__":
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=4,  # try 2 or 4 in Colab
+        num_workers=2,  # try 2 or 4 in Colab
         pin_memory=True,
     )
 

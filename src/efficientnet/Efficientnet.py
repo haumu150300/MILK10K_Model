@@ -1,5 +1,5 @@
 import timm
-import torch.nn as nn
+from torch import nn
 
 class Efficientnet(nn.Module):
     def __init__(self, image_size=256, num_classes=11):
