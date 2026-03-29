@@ -1,1 +1,6 @@
-httpschallenge.isic-archive.comtask57
+httpschallenge.isic-archive.com/task/57
+
+
+
+#train1: add separate classifier
+#train2: combine backbone

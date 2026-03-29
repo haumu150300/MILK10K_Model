@@ -2,13 +2,16 @@
 
 It also includes common transformation functions (e.g., get_transform, __scale_width), which can be later used in subclasses.
 """
+
 import random
 import numpy as np
 import torch.utils.data as data
 from PIL import Image
 import torchvision.transforms as transforms
 from abc import ABC, abstractmethod
-import cv2
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+
 
 class BaseDataset(data.Dataset, ABC):
     """This class is an abstract base class (ABC) for datasets.
@@ -38,7 +41,7 @@ class BaseDataset(data.Dataset, ABC):
         Returns:
             the modified parser.
         """
-        
+
         return parser
 
     @abstractmethod
@@ -63,9 +66,9 @@ def get_params(opt, size):
     w, h = size
     new_h = h
     new_w = w
-    if opt.preprocess == 'resize_and_crop':
+    if opt.preprocess == "resize_and_crop":
         new_h = new_w = opt.load_size
-    elif opt.preprocess == 'scale_width_and_crop':
+    elif opt.preprocess == "scale_width_and_crop":
         new_w = opt.load_size
         new_h = opt.load_size * h // w
 
@@ -74,46 +77,70 @@ def get_params(opt, size):
 
     flip = random.random() > 0.5
 
-    return {'crop_pos': (x, y), 'flip': flip}
+    return {"crop_pos": (x, y), "flip": flip}
 
-def get_transform(opt, params=None, grayscale=False, method=transforms.InterpolationMode.BICUBIC, convert=True):
-    transform_list = []
-    if grayscale:
-        transform_list.append(transforms.Grayscale(1))
-    if 'resize' in opt.preprocess:
-        osize = [opt.load_size, opt.load_size]
-        transform_list.append(transforms.Resize(osize, method))
-    elif 'scale_width' in opt.preprocess:
-        transform_list.append(transforms.Lambda(lambda img: __scale_width(img, opt.load_size, opt.crop_size, method)))
 
-    if 'crop' in opt.preprocess:
-        if params is None:
-            transform_list.append(transforms.CenterCrop(opt.crop_size))
-        else:
-            transform_list.append(transforms.Lambda(lambda img: __crop(img, params['crop_pos'], opt.crop_size)))
+def get_closeup_transform(
+    opt,
+    params=None,
+    grayscale=False,
+    method=transforms.InterpolationMode.BICUBIC,
+    convert=True,
+    is_augment=True,
+):
+    tf_list = [A.Resize(opt.crop_size, opt.crop_size)]
 
-    if opt.preprocess == 'none':
-        # transform_list.append(transforms.Lambda(lambda img: __make_power_2(img, base=4, method=method)))
-        transform_list = transform_list
+    if is_augment:
+        tf_list.append(A.HorizontalFlip())
+        tf_list.append(A.Rotate(limit=30))
+        tf_list.append(A.ColorJitter(0.2, 0.2, 0.2, 0.1))
+        tf_list.append(A.GaussNoise(p=0.3))
+    tf_list.append(A.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)))
+    tf_list.append(ToTensorV2())
+    return A.Compose(tf_list)
 
-    if not opt.no_flip:
-        if params is None:
-            transform_list.append(transforms.RandomHorizontalFlip())
-        elif params['flip']:
-            transform_list.append(transforms.Lambda(lambda img: __flip(img, params['flip'])))
 
-    if convert:
-        transform_list += [transforms.ToTensor()]
+def get_test_transform(
+    opt,
+    params=None,
+    grayscale=False,
+):
+    return transforms.Compose(
+        [
+            transforms.Resize((opt.crop_size, opt.crop_size)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        ]
+    )
 
-    transform_list.append(transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
-    return transforms.Compose(transform_list)
+
+def get_dermoscopic_transform(
+    opt,
+    params=None,
+    grayscale=False,
+    method=transforms.InterpolationMode.BICUBIC,
+    convert=True,
+    is_augment=True,
+):
+    tf_list = [
+        A.Resize(opt.crop_size, opt.crop_size),
+    ]
+    if is_augment:
+        tf_list.append(A.HorizontalFlip())
+        tf_list.append(A.VerticalFlip())
+        tf_list.append(A.RandomBrightnessContrast(p=0.3))
+    tf_list.append(A.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)))
+    tf_list.append(ToTensorV2())
+    return A.Compose(tf_list)
 
 
 def __transforms2pil_resize(method):
-    mapper = {transforms.InterpolationMode.BILINEAR: Image.BILINEAR,
-              transforms.InterpolationMode.BICUBIC: Image.BICUBIC,
-              transforms.InterpolationMode.NEAREST: Image.NEAREST,
-              transforms.InterpolationMode.LANCZOS: Image.LANCZOS,}
+    mapper = {
+        transforms.InterpolationMode.BILINEAR: Image.BILINEAR,
+        transforms.InterpolationMode.BICUBIC: Image.BICUBIC,
+        transforms.InterpolationMode.NEAREST: Image.NEAREST,
+        transforms.InterpolationMode.LANCZOS: Image.LANCZOS,
+    }
     return mapper[method]
 
 
@@ -129,7 +156,9 @@ def __make_power_2(img, base, method=transforms.InterpolationMode.BICUBIC):
     return img.resize((w, h), method)
 
 
-def __scale_width(img, target_size, crop_size, method=transforms.InterpolationMode.BICUBIC):
+def __scale_width(
+    img, target_size, crop_size, method=transforms.InterpolationMode.BICUBIC
+):
     method = __transforms2pil_resize(method)
     ow, oh = img.size
     if ow == target_size and oh >= crop_size:
@@ -143,7 +172,7 @@ def __crop(img, pos, size):
     ow, oh = img.size
     x1, y1 = pos
     tw = th = size
-    if (ow > tw or oh > th):
+    if ow > tw or oh > th:
         return img.crop((x1, y1, x1 + tw, y1 + th))
     return img
 
@@ -156,9 +185,11 @@ def __flip(img, flip):
 
 def __print_size_warning(ow, oh, w, h):
     """Print warning information about image size(only print once)"""
-    if not hasattr(__print_size_warning, 'has_printed'):
-        print("The image size needs to be a multiple of 4. "
-              "The loaded image size was (%d, %d), so it was adjusted to "
-              "(%d, %d). This adjustment will be done to all images "
-              "whose sizes are not multiples of 4" % (ow, oh, w, h))
+    if not hasattr(__print_size_warning, "has_printed"):
+        print(
+            "The image size needs to be a multiple of 4. "
+            "The loaded image size was (%d, %d), so it was adjusted to "
+            "(%d, %d). This adjustment will be done to all images "
+            "whose sizes are not multiples of 4" % (ow, oh, w, h)
+        )
         __print_size_warning.has_printed = True

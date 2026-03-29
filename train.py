@@ -1,41 +1,50 @@
+import timm
+
+from src.loss.ASLWithLogitsLoss import ASLWithLogitsLoss
 from data.TrainDataset import CombinedDataset, make_dataset
 import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from src.model.Efficientnet import Efficientnet
+from src.model.EfficientnetAttv2 import EfficientnetAttv2
 import random
 from sklearn.model_selection import train_test_split
 from config import Config
 import tqdm
+from torch.utils.tensorboard import SummaryWriter
+from torch.optim.lr_scheduler import CyclicLR
 from utils import continue_train
+import os
 random.seed(42)
 torch.manual_seed(42)
 
-def train_one_epoch(
-    model: nn.Module, dataloader: DataLoader, criterion, optimizer, device: torch.device
-):
+def train_batch(model: torch.nn.Module, batch, criterion, optimizer, scheduler, device: torch.device):
     model.train()
-    running_loss = 0.0
-     
-    with tqdm.tqdm(total=dataloader.__len__(), desc="Epoch Progress") as pbar:
-        for i, batch in enumerate(dataloader):
-            # if i >= 100:
-            #     break
-            inputs, labels = batch["image"].to(device), batch["label"].to(device)
-            optimizer.zero_grad()
-            scaler = torch.amp.GradScaler(device.type)
-            with torch.amp.autocast(device.type):
-                outputs = model(inputs)
-                loss = criterion(outputs, labels)
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-            running_loss += loss.item() * inputs.size(0)
-            pbar.update(1)
-        epoch_loss = running_loss / len(dataloader.dataset)
-    return epoch_loss
+    input1 = batch["image1"].to(device)
+    metadata1 = batch["metadata1"].to(device)
+    input2 = batch["image2"].to(device)
+    metadata2 = batch["metadata2"].to(device)
+    labels = batch["label"].to(device)
+    
+    optimizer.zero_grad()
+    scaler = torch.amp.GradScaler()
+    with torch.amp.autocast(device_type=device.type):
+        outputs = model(input1, input2)
+        loss = criterion(outputs, labels)
 
+    if torch.isnan(outputs).any():
+        print("Bad output")
+
+    scaler.scale(loss).backward()
+    scaler.unscale_(optimizer)
+    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+    scaler.step(optimizer)
+    scaler.update()
+    if scheduler is not None:
+        scheduler.step()
+    running_loss = loss.item()
+    torch.cuda.empty_cache()
+    return running_loss
 
 def val_data(model: nn.Module, dataloader: DataLoader, criterion, device):
     model.eval()
@@ -56,16 +65,18 @@ def val_data(model: nn.Module, dataloader: DataLoader, criterion, device):
     accuracy = correct / total
     return epoch_loss, accuracy
 
+
 if __name__ == "__main__":
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     print("device: ", device.type)
 
     config = Config()
+    config.crop_size = 384
+    config.model_saved_path = "./chkpts/attv2"
     img_root_folder = config.img_root_folder
     model_saved_path = config.model_saved_path
 
     train_metadata = pd.read_csv("./MILK10k_Training_Metadata.csv")
-    train_metadata = train_metadata[train_metadata["image_type"] == "dermoscopic"]
     # train_supplement = pd.read_csv("./MILK10k_Training_Supplement.csv")
     # all_df = pd.merge(train_metadata, train_supplement, on="isic_id", how="inner")
 
@@ -74,58 +85,84 @@ if __name__ == "__main__":
     train_gt_df.set_index("lesion_id", inplace=True)
     train_dataset = CombinedDataset(config, all_df, train_gt_df)
 
-    def split_dataframe(df, train_frac=0.8):
-        train_df, val_df = train_test_split(df, train_size=train_frac, random_state=42)
-        return train_df, val_df
+    # def split_dataframe(df, train_frac=0.8):
+    #     train_df, val_df = train_test_split(df, train_size=train_frac, random_state=42)
+    #     return train_df, val_df
 
-    train_df, val_df = split_dataframe(all_df, train_frac=0.8)
+    # train_df, val_df = split_dataframe(all_df, train_frac=0.95)
     # limit to 500 rows for testing
     # train_df = train_df.head(50)
-    print(train_df.head())
-    train_dataset = CombinedDataset(config, train_df, train_gt_df)
 
-    epochs = 500
-    batch_size = 6
+    total_steps = 100000 + 1
+    batch_size = 8
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
         num_workers=2,  # try 2 or 4 in Colab
         pin_memory=True,
+        # persistent_workers=True,
     )
+    torch.backends.cudnn.benchmark = True
+    model = EfficientnetAttv2()
 
-    model = Efficientnet(image_size=256, num_classes=11)
-    criterion = nn.BCEWithLogitsLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.00005)
+    # data_config = timm.data.resolve_model_data_config(model.backbone1)
+    # transforms = timm.data.create_transform(**data_config, is_training=True)
+    # train_dataset.transform = transforms
+
+    criterion = ASLWithLogitsLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=8e-5, weight_decay=1e-6)
+    # scheduler = CyclicLR(
+    #     optimizer, base_lr=8e-6, max_lr=1e-2, step_size_up=1000, mode="triangular2", cycle_momentum=False
+    # )
+    scheduler = None
     model.to(device)
-    init_step, best_val_loss = continue_train(model, optimizer, config, device)
+    init_step, best_val_loss = 0, 0
+    # init_step, best_val_loss = continue_train(
+    #     model, optimizer, config, device, saved_checkpoint='best_model_val_loss_0.00235_10000.pth'
+    # )
 
     # val_df = val_df.head(50)
-    val_dataset = CombinedDataset(config, val_df, train_gt_df)
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=2,  # try 2 or 4 in Colab
-        pin_memory=True,
-    )
+    # val_dataset = CombinedDataset(config, val_df, train_gt_df)
+    # val_loader = DataLoader(
+    #     val_dataset,
+    #     batch_size=2,
+    #     shuffle=False,
+    #     num_workers=2,  # try 2 or 4 in Colab
+    #     pin_memory=True,
+    # )
+    writer = SummaryWriter(log_dir="./runs/test")
+
     print("start training...")
-    with tqdm.tqdm(initial=init_step, total=epochs, desc="Training Progress") as pbar:
-        for epoch in range(init_step, epochs):
-            train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
-            val_loss, val_accuracy = val_data(model, val_loader, criterion, device)
+    with tqdm.tqdm(
+        initial=init_step, total=total_steps, desc="Training Progress"
+    ) as pbar:
+        data_iter = iter(train_loader)
+        for epoch in range(init_step, total_steps):
+            try:
+                batch = next(data_iter)
+            except StopIteration:
+                data_iter = iter(train_loader)
+                batch = next(data_iter)
+            train_loss = train_batch(model, batch, criterion, optimizer, scheduler, device)
+            # val_loss, val_accuracy = val_data(model, val_loader, criterion, device)
+            val_loss, val_accuracy = 0.0, 0.0
             pbar.update(1)
-            print(
-                f"Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}"
-            )
-            if epoch > 1 and epoch % 50 == 0:
-                best_val_loss = val_loss
+            pbar.set_postfix({"Train Loss": f"{train_loss:.5f}"})
+            
+            writer.add_scalar("Loss/train", train_loss, epoch)
+            # writer.add_scalar("Lr", scheduler.get_last_lr()[0], epoch)
+
+            if epoch > 0 and epoch % 5000 == 0:
+                if os.path.exists(model_saved_path) == False:
+                    os.makedirs(model_saved_path)
+                # best_val_loss = val_loss
                 torch.save(
                     {
                         "epoch": epoch,
                         "model_state_dict": model.state_dict(),
                         "optimizer_state_dict": optimizer.state_dict(),
-                        "loss": val_loss,
+                        "loss": train_loss,
                     },
-                    f"{model_saved_path}/best_model_val_loss_{best_val_loss:.4f}_{epoch}.pth",
+                    f"{model_saved_path}/best_model_val_loss_{train_loss:.5f}_{epoch}.pth",
                 )

@@ -1,9 +1,11 @@
+import numpy as np
 import pandas as pd
-from data.BaseDataset import BaseDataset, get_transform
+from data.BaseDataset import BaseDataset, get_closeup_transform, get_dermoscopic_transform, get_test_transform
 import os
 from PIL import Image
 import torch
 from config import Config
+from sklearn.preprocessing import MinMaxScaler
 
 def make_dataset(img_id, data_root_folder):
     img_folder_path = os.path.join(data_root_folder, img_id)
@@ -12,7 +14,10 @@ def make_dataset(img_id, data_root_folder):
         "close-up": os.path.join(img_folder_path, imgs[0]),
         "dermoscopic": os.path.join(img_folder_path, imgs[1]),
     }
-
+def tabular_features(df, idx):
+    # 'age_approx', 'sex', 'skin_tone_class', 'site',
+    features = [ 'MONET_ulceration_crust', 'MONET_hair', 'MONET_vasculature_vessels', 'MONET_erythema', 'MONET_pigmented', 'MONET_gel_water_drop_fluid_dermoscopy_liquid', 'MONET_skin_markings_pen_ink_purple_pen']
+    return torch.tensor([x for x in df.iloc[idx][features].values], dtype=torch.float32)
 
 isic_dx_to_abbr = {
     # AKIEC
@@ -96,22 +101,40 @@ LABELS = list(set(isic_dx_to_abbr.values()))
 lbl_to_idx = {v: i for i, v in enumerate(LABELS)}
 idx_to_lbl = {i: v for i, v in enumerate(LABELS)}
 
-
  
 class CombinedDataset(BaseDataset):
-    def __init__(self,opt, df, gt_df, data_type: str = "train"):
+    def __init__(self,opt, all_df: pd.DataFrame, gt_df, phase: str = "train"):
         BaseDataset.__init__(self, opt)
-        self.dataset = df
+        self.dermos_df = all_df[all_df["image_type"] == "dermoscopic"]
+        self.closeup_df = all_df[all_df["image_type"] == "clinical: close-up"]
         self.gt_df = gt_df
         self.opt = opt
         
-        self.data_type = data_type
-        self.transform = get_transform(opt)
-        # if self.data_type == "train":
-        #     self.pre_metadata()
+        self.phase = phase
+        self.need_aug = False
+        if self.phase == "train":
+            self.closeup_transform = get_closeup_transform(opt, is_augment=self.need_aug)
+            self.dermos_transform = get_dermoscopic_transform(opt, is_augment=self.need_aug)
+        else:
+            self.test_transform = get_test_transform(opt)
+
+        # Initialize the scaler
+        self.scaler = MinMaxScaler()
+        self.pre_metadata()
+        
+    def toggle_aug_tf(self, need_aug: bool):
+        self.closeup_transform = get_closeup_transform(self.opt, is_augment=need_aug)
+        self.dermos_transform = get_dermoscopic_transform(self.opt, is_augment=need_aug)
+        self.need_aug = need_aug
 
     def pre_metadata(self):
-        self.dataset["target"] = self.dataset["diagnosis_full"].map(isic_dx_to_abbr)
+        self.dermos_df['age_approx'] = self.scaler.fit_transform(self.dermos_df[['age_approx']])
+        self.dermos_df['sex'] = self.dermos_df['sex'].map({'male': 0, 'female': 1})
+        self.dermos_df['site'] = self.dermos_df['site'].astype('category').cat.codes 
+        num_cols = self.dermos_df.select_dtypes(include='number').columns
+        self.dermos_df[num_cols] = self.dermos_df[num_cols].fillna(0)
+        
+        # self.dataset["target"] = self.dataset["diagnosis_full"].map(isic_dx_to_abbr)
         # self.dataset.drop(columns=['diagnosis_full'], inplace=True)
         # self.dataset.set_index("isic_id", inplace=True)
 
@@ -122,38 +145,37 @@ class CombinedDataset(BaseDataset):
         return encoded_metadata
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self.dermos_df)
     
-    def __getitem__(self, idx):
-        row = self.dataset.iloc[idx]
+    def getRowData(self, row, idx):
         leision_id = row.lesion_id
         img_path = os.path.join(self.opt.img_root_folder, leision_id, f'{row["isic_id"]}.jpg')
         img = Image.open(img_path).convert("RGB")
-        # row_meta = row.drop(
-        #     [
-        #         "isic_id",
-        #         "lesion_id",
-        #         "close-up",
-        #         "dermoscopic",
-        #         "image_manipulation",
-        #         "copyright_license",
-        #         "attribution",
-        #         "image_type",
-        #         "invasion_thickness_interval",
-        #     ]
-        # )
-        # row_meta = self.encode_row_metadata(row_meta)
-
-        if self.data_type == "train":
-            return {
-                "image": self.transform(img),
-                # "metadata": row_meta,
-                "label": torch.tensor([i for i in self.gt_df.loc[leision_id].values], dtype=torch.float32),
-            }
+        return img, tabular_features(self.dermos_df, idx), leision_id
+    
+    def __getitem__(self, idx):
+        row = self.dermos_df.iloc[idx]
+        row2 = self.closeup_df.iloc[idx]
+        
+        img1, metadata1, leision_id = self.getRowData(row, idx)
+        img2, metadata2, _leision_id1 = self.getRowData(row2, idx)
+        if leision_id != _leision_id1:
+            print("Error: Lesion IDs do not match for the same index.")
+        
+        image1, image2 = None, None
+        if self.phase == "train":
+            image1 = self.dermos_transform(image=np.array(img1))["image"]
+            image2 = self.closeup_transform(image=np.array(img2))["image"]
         else:
-            return {
-                "image": self.transform(img),
-                # "metadata": row_meta,
+            image1 = self.test_transform(img1)
+            image2 = self.test_transform(img2)
+        return {
+                "image1": image1,
+                "image2": image2,
+                "metadata1": metadata1,
+                "metadata2": metadata2,
+                "leision_id": leision_id,
+                "label": None if self.phase == "test" else torch.tensor([i for i in self.gt_df.loc[leision_id].values], dtype=torch.float32),
             }
 
 
